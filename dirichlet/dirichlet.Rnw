@@ -1,0 +1,85 @@
+% figures, figurepath: dirichlet/
+%v R sources: dirichlet/
+
+% \documentclass[a4paper]{scrreprt}
+% 
+% \newcommand{\pkg}[1]{{\normalfont\fontseries{b}\selectfont #1}} % see ZIP file from http://www.jstatsoft.org/instructions
+% \let\proglang=\textsf
+% \let\code=\texttt
+% \title{The Dirichlet distribution}
+% \begin{document}
+% %\maketitle
+% \subsection{The Dirichlet distribution}
+%\SweaveOpts{prefix.string=figures/dirichlet}
+% \SweaveOpts{keep.source = TRUE}
+
+
+% # The beta distribtuion is defined
+% # as:
+% # Beta:
+% # 
+% # Zoonekynd 2007: Statistics with R, chapter: Probability Distributions
+% # \begin{figure}[htbp]
+% # \begin{center}
+% # <<label=06, fig=TRUE, height=8, width=10, echo=F, eps=FALSE>>=
+% # source("beta-distribution.R")
+% # @
+% # \caption{The beta distribution's probability density function.}
+% # \label{fig:beta-distribution}
+% # \end{center}
+% # \end{figure}
+% # 
+% # code:
+% # \ref{code:beta-distribution.R}
+
+Figure \ref{fig:diri3d} on page \pageref{fig:diri3d} shows the
+density of Dirichlet distributions with various $\alpha$
+parameters over the two-simplex. A greater sum of $\alpha$
+(sometimes called ``scaling'') leads to a peakier density
+\citep{Blei2009c}. Values for $\alpha$ smaller than one lead to higher density at the extremes of the simplex.
+
+% # L$E(\theta_1|\alpha)=\frac{\alpha_i}{\sum{\alpha_i}}$
+% # 
+% # the greater the sum of alphas (sometimes called s..scaling) the peakier the distribution at point E.
+% # what happens when alpha<1, equiv. s<K.: increased probability at shapes
+
+\begin{figure}[htbp]
+\begin{center}
+<<results=hide,eval=T, fig=TRUE,height=12, width=8,echo=F,eps=FALSE>>=
+source("dirichlet-3d.R")
+@
+\caption{Order $K=3$ Dirichlet density plots (\proglang{R} code: Appendix~\ref{code:dirichlet-3d.R}).}
+\label{fig:diri3d}
+\end{center}
+\end{figure}
+
+Figure \ref{fig:dirisamples} on page \pageref{fig:dirisamples}
+shows samples drawn from Dirichlet distributions of order five.
+The Dirichlets are symmetric, meaning that the vector $\alpha$ contains identical values. As these values approach zero, the draws get sparser, favoring more extreme outcomes on the five-simplex.
+
+% # alhpa=1, 15 dirichlet draws of dimension 10
+% # alpha=10 more uniform
+% # alpha=100 more uniform
+% 
+% # alpha=equal: exchangeable dirichlet, (or: symmetric dirichlet)
+% # number of atoms gets smaller
+% # alpha smaller: more sparser draws
+% # alpha=0.1
+% # alpha=0.01
+% # alpha=0.001 only one atom
+
+\begin{figure}[htbp]
+\begin{center}
+<<eval=T, fig=TRUE,height=10, width=8, echo=F,eps=FALSE>>=
+source("dirichlet-samples.R")
+@
+\caption{$K=5$ symmetric Dirichlet random samples (\proglang{R} code: Appendix~\ref{code:dirichlet-samples.R}).}
+\label{fig:dirisamples}
+\end{center}
+\end{figure}
+% \end{document}
+
+% # The \proglang{R}-package \pkg{MCMCpack} \cite{Martin2009} provides both the functions \code{ddirichlet()} and \code{rdirichlet()} for computing the Dirichlet density and drawing a random sample from a Dirichlet distribution.
+% # Functions for generating grid data and plo\ref{code:dirichlet-3d.R}tting via \code{persp()}
+% # <<>>=
+% # @

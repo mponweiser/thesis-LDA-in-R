@@ -1,0 +1,40 @@
+\SweaveOpts{keep.source = TRUE}
+%#.libPaths("~/lib/R") # in case the environment variable R_LIBS is not available from gvim etc.
+%#sessionInfo()
+<<echo=TRUE,eval=FALSE>>=
+load("modelselection-result.RData")
+library("lattice")
+print(xyplot(logLikelihood ~ topics, data = result,
+    type = c("p","a","g"), fun = mean,
+    ylab = "Log-likelihood", xlab = "Topics",
+    scales = list(x = list(relation="free", at =
+    c(50,100,200,300,400,500,600,1000)))))
+@
+Figure \ref{fig:modelselection-result} on page~\pageref{fig:modelselection-result} shows the estimated
+marginal log-likelihood of each sample chain, grouped by number
+of topics. Additionally there are lines connecting the average
+value of each group of chain likelihoods. As noted in
+\citet{Griffiths2004}, there is little deviation within each
+group, even though the sample chains were produced with different
+random number generator seeds.
+
+%\ti{make figure smaller, show 50 and 100}
+\setkeys{Gin}{width=0.8\textwidth}
+\begin{figure}[htbp]
+\begin{center}
+
+<<fig=TRUE,height=4, width=6,echo=F,eps=FALSE>>=
+load("modelselection-result.RData")
+#load("modelselection-result-2001.Rda")
+library(lattice)
+print(xyplot(logLikelihood ~ topics, data = result,
+    type = c("p","a","g"), fun = mean,
+    ylab = "Log-likelihood", xlab = "Topics",
+    scales = list(x = list(relation="free", at =
+    c(50,100,200,300,400,500,600,1000)))))
+@
+\caption{Estimated marginal log-likelihoods per number of topics (circles), average
+likelihoods are connected by lines.}
+\label{fig:modelselection-result}
+\end{center}
+\end{figure}

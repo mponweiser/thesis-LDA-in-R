@@ -1,0 +1,22 @@
+\SweaveOpts{keep.source = TRUE}
+\chapter{Appendix: PNAS Journal 1991-2001 Corpus: 300 Topics and
+Their Twelve Most Probable Terms from the LDA Model Sample}
+
+\label{ch:example-terms}
+
+<<label=01, echo=FALSE>>=
+#options(continue=" ")
+#.libPaths("~/lib/R") # in case the environment variable R_LIBS is not available from gvim etc.
+@
+The twelve most probable terms for all 300 topics of the model
+sample that was used in the application part of this thesis are collected
+in the following tables. The source code for generating the
+tables is reproduced in Appendix~\ref{code:appendix-model-300-terms-tables.R}.
+
+\footnotesize
+<<label=12, echo=FALSE, results=tex>>=
+source("appendix-model-300-terms-tables.R")
+@
+%#topicsPerPanel <- 3
+%#length(coldtopics) %/% topicsPerPanel; length(coldtopics) %% topicsPerPanel 
+

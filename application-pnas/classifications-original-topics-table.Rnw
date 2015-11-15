@@ -1,0 +1,23 @@
+\SweaveOpts{keep.source = TRUE}
+%\DefineVerbatimEnvironment{Sinput}{Verbatim} {xleftmargin=2em}
+%\DefineVerbatimEnvironment{Soutput}{Verbatim}{xleftmargin=2em}
+\fvset{listparameters={\setlength{\topsep}{0pt}}}
+\renewenvironment{Schunk}{\vspace{\topsep}}{\vspace{\topsep}}
+\setkeys{Gin}{width=1.0\textwidth}
+<<echo=false, label=01>>=
+options(width = 68)
+#options(continue=" ")
+options(SweaveHooks = list(fig = function() par(mar = c(5.1, 4.1, 1.1, 2.1))))
+@
+\begin{table}[htbp]
+\footnotesize
+<<echo=FALSE, results=tex>>=
+# https://stat.ethz.ch/pipermail/r-help/2009-September/212798.html
+source("classifications-original-topics-table.R")
+@
+\caption{Figure~4 (\emph{Lower}) from \citetalias{Griffiths2004}: ``The
+five most probable words in the topics themselves listed in the
+same order as on the horizontal axis in \emph{Upper}
+[Figure~\ref{fig:griffiths-steyvers-2004-figure-4}].''}
+\label{tbl:classifications-original-topics-table}
+\end{table}

@@ -1,0 +1,254 @@
+\SweaveOpts{keep.source = TRUE}
+<<label=01, echo=FALSE>>=
+options(width=68)
+#options(continue=" ")
+#.libPaths("~/lib/R") # in case the environment variable R_LIBS is not available from gvim etc.
+library("topicmodels")
+@
+%\ti{rewrite, years are now corpus metadata}
+We begin by loading the model sample and corpus and generate a
+\texttt{factor} of years from the \texttt{Origin} corpus
+metadata. This enables us to select abstracts in the model and
+the corpus by years.
+<<label=02>>=
+load("model-lda-gibbs-300topics.RData")
+load("pnas-abstracts-meta-dataframe.RData")
+years <- levels(factor(abstracts_meta$year))
+topics_n <- model_lda@k
+theta <- posterior(model_lda)$topics
+@
+The following table reveals that the number of documents per year is
+roughly equally distributed, which was different in last section,
+where we had skewed meta variables. The \proglang{R} code listing for this table is
+available in Appendix~\ref{code:trends-table-year-frequencies.R}.
+
+\begin{table}[htbp]
+%\vspace{6 mm}
+<<label=03, echo=FALSE, results=tex>>=
+# loads xtable
+source("trends-table-year-frequencies.R")
+@
+\caption{Abstracts frequency per year.}
+\end{table}
+
+%# meanThetaByYear.df <- aggregate(theta, list(year), FUN=mean, simplify = TRUE)
+%# meanThetaByYear.df <- as.data.frame.list(by(theta, year, mean, simplify = FALSE))
+Taking the mean of $\theta$ by years is accomplished by the \texttt{by()}
+function. Afterwards it is coerced into a \texttt{ts} object, which is the \proglang{R}
+standard container for time series \citep{Cowpertwait2009}. A
+second variable -- the corresponding time axis -- is produced by \texttt{time()}.
+<<label=04>>=
+theta_mean_by_year_by <- by(theta, abstracts_meta$year, colMeans)
+theta_mean_by_year <- do.call("rbind",theta_mean_by_year_by)
+colnames(theta_mean_by_year) = paste(1:topics_n)
+
+theta_mean_by_year_ts <- ts(theta_mean_by_year, 
+    start = as.integer(years[1]))
+theta_mean_by_year_time <- time(theta_mean_by_year)
+@
+Now we apply the fitting of a linear model to each of the
+300~topics with
+the \texttt{lm()} function. The model coefficients, significance
+levels and trend slopes are each stored in separate variables.
+
+%# significance test:
+%# see summary.lm, p= probability of t-value (rdf = number of residulas(11)-rank(2) = 9)
+%# see: http://www.dtreg.com/linreg.htm
+%#http://www.csulb.edu/~msaintg/ppa696/696regs.htm
+%#http://en.wikipedia.org/wiki/Student's_t-test#Slope_of_a_regression_line
+%#summary(meanTheta.lm$'2')
+%#plot(meanThetaByYear.ts[,2])
+%#summary.lm(meanTheta.lm$'2')$coefficients # show estimates, se, t-value, t-prob
+%#meanTheta.lm$'2'$qr
+
+%\ti{x residuals(), sd()?}
+<<label=05>>=
+theta_mean_lm <- apply(theta_mean_by_year, 2, 
+    function(x) lm(x ~ theta_mean_by_year_time))
+
+theta_mean_lm_coef <- lapply(theta_mean_lm, 
+    function(x) coef(summary(x)))
+
+theta_mean_lm_coef_sign <- sapply(theta_mean_lm_coef, 
+    '[',"theta_mean_by_year_time","Pr(>|t|)")
+theta_mean_lm_coef_slope <- sapply(theta_mean_lm_coef, 
+    '[',"theta_mean_by_year_time","Estimate")
+@
+
+Then we divide the trend slopes into positive and negative slopes:
+%# significance
+%#meanTheta.lm.coef.sign.0001 <- as.character(which(meanTheta.lm.coef.sign <= 0.0001))
+%#meanTheta.lm.coef.sign.0001 <- which(meanTheta.lm.coef.prob,meanTheta.lm.coef.prob <= 0.0001)
+<<label=06>>=
+theta_mean_lm_coef_slope_pos <- 
+    theta_mean_lm_coef_slope[theta_mean_lm_coef_slope >= 0]
+theta_mean_lm_coef_slope_neg <- 
+    theta_mean_lm_coef_slope[theta_mean_lm_coef_slope < 0]
+@
+At a $p$-level of 0.0001, \citetalias{Griffiths2004} reported 54~topics
+with a significant increasing trend and 50 with a significant
+decreasing trend. These results do not match the numbers in this
+replication, as will be shown.
+In order to generate a table that lists the number of topics with
+positive or negative trends at all significance levels, we have
+to prepare the data:
+
+<<label=07>>=
+p_level <- c(0.05, 0.01, 0.001, 0.0001)
+significance_total <- sapply(p_level, 
+    function(x) (theta_mean_lm_coef_sign[theta_mean_lm_coef_sign < x]))
+significance_neg <- sapply(1:length(p_level), 
+    function(x) intersect(names(theta_mean_lm_coef_slope_neg),
+    names(significance_total[[x]])))
+significance_pos <- sapply(1:length(p_level), 
+    function(x) intersect(names(theta_mean_lm_coef_slope_pos), 
+    names(significance_total[[x]])))
+@
+The following table summarizes the number of topics, split by
+positive and negative slope, and $p$-level:
+
+\begin{table}[htbp]
+<<label=08, echo=FALSE, results=tex>>=
+source("trends-table-significance.R")
+@
+\caption{Topics with significant trends (listing: Appendix~\ref{code:trends-table-significance.R}).}
+\end{table}
+
+I assume that the large differences between the amount of topics with a significance
+level of 0.0001 here and in the original paper can be attributed
+to either a typo (0.0001 instead of 0.001) or a different test
+statistic used in \citetalias{Griffiths2004}.
+
+
+%\setkeys{Gin}{width=1.5\textwidth}
+%\setkeys{Gin}{height=0.8\textwidth}
+%\begin{landscape}
+%\begin{figure}[htbp]
+%\begin{center}
+%<<split=TRUE,fig=TRUE,height=12, width=24,echo=F,eps=FALSE>>=
+%library(lattice)
+%print(xyplot(meanThetaByYear.ts[,names(sort(meanTheta.lm.coef.slope))],
+%	#layout = c(6, 5),
+%	#screens = c(rep("cold topics", 5), rep("hot topics", 5)),
+%	superpose = TRUE,
+%	#col = "blue",
+%	alpha = 0.2,
+%	ylim = c(0, 0.015),
+%	ylab = "Mean theta",
+%	xlab = "Year",
+%	type = c("l", "g"),
+%	#auto.key = list(space = "right"), 
+%	auto.key = FALSE,
+%	scales = list(x = list(alternating = FALSE)),
+%	#par.settings = standard.theme(color = FALSE)
+%	))
+%
+%@
+%\caption{All 300 topics superposed}
+%\label{fig:trends-300-superposed}
+%\end{center}
+%\end{figure}
+%\end{landscape}
+
+A first impression of how the 300~topics change over time is shown in
+Figure~\ref{fig:trends-all-300-in-panels} by 30~panels with ten trend lines each. The topics
+are sorted by slope, therefore ``cold'' topics appear in the
+first panels, ``hot'' topics in the last panels.
+\begingroup
+\setkeys{Gin}{width=0.9\textheight}
+%\setkeys{Gin}{width=1.5\textwidth}
+\setkeys{Gin}{height=0.8\textwidth}
+\begin{landscape}
+\begin{figure}[htbp]
+\begin{center}
+% loads lattice
+<<label=09, fig=TRUE, height=12, width=24, echo=F, eps=FALSE>>=
+source("trends-fig-all-300.R")
+@
+\caption{All 300 topics sorted by slope of linear models, in
+panels of ten topics each. (Listing:
+Appendix~\ref{code:trends-fig-all-300.R})}
+\label{fig:trends-all-300-in-panels}
+\end{center}
+\end{figure}
+\end{landscape}
+\endgroup
+
+In the next step we will reproduce Figure~5 from \citet{Griffiths2004}. This
+involves plotting the five (three in the original paper) coldest and
+hottest topics in two panels
+and providing the most probable terms for these topics.
+To find the topics with the most extreme linear trends at a $p$-level of
+0.0001 we can re-use data from the previous table.
+%plot 5 cold topics, 5 hot topics, evtl mit add.text?
+%#meanTheta.lm.coef.sign.0001 <- significanceTotal
+%
+%# Indices sorted by positive slope, significance 0.0001 (list entry no. 4)
+%#hottopics <- as.numeric(names(sort(meanTheta.lm.coef.slope.pos[meanTheta.lm.coef.sign.0001], decreasing = TRUE)))
+%# Indices sorted by negative slope
+%#coldtopics <- as.numeric(names(sort(meanTheta.lm.coef.slope.neg[meanTheta.lm.coef.sign.0001], decreasing = FALSE)))
+<<label=10>>=
+topics_hot <- as.numeric(names(sort(theta_mean_lm_coef_slope[
+    significance_pos[[4]]], decreasing=TRUE)))
+topics_cold <- as.numeric(names(sort(theta_mean_lm_coef_slope[
+    significance_neg[[4]]], decreasing=FALSE)))
+@
+
+Figure \ref{fig:trends-five-hot-and-cold} on page
+\pageref{fig:trends-five-hot-and-cold} is printed by calling
+the \proglang{R} source code which can be found in Appendix \ref{code:trends-fig-five-hot-and-cold.R}.
+
+\setkeys{Gin}{width=1\textwidth}
+\begin{figure}[htbp]
+\begin{center}
+<<label=11, fig=TRUE, height=6, width=8, echo=F, eps=FALSE>>=
+source("trends-fig-five-hot-and-cold.R")
+@
+\caption{Five coldest and hottest topics from 1991 to 2001,
+compare to Fig.~5 in \citet{Griffiths2004}.}
+\label{fig:trends-five-hot-and-cold}
+\end{center}
+\end{figure}
+
+The twelve most probable terms for our five cold and hot topics are
+collected in Table \ref{tbl:trends-terms} on page
+\pageref{tbl:trends-terms} (source code: see
+Appendix \ref{code:trends-table-terms.R}).
+
+\begin{table}
+\footnotesize
+<<label=12, echo=FALSE, results=tex>>=
+source("trends-table-terms.R")
+@
+%#topicsPerPanel <- 3
+%#length(coldtopics) %/% topicsPerPanel; length(coldtopics) %% topicsPerPanel 
+\caption{Twelve most probable terms of five coldest (top) and
+five hottest topics (bottom).}
+\label{tbl:trends-terms}
+\end{table}
+
+%\ti{analysis of outliers and change of categories over time?}
+
+%\ti{Ähnlichkeit er terms messen, ränge oä}
+
+%\setkeys{Gin}{width=1\textwidth}
+%\begin{figure}[htbp]
+%\begin{center}
+%<<split=TRUE,fig=TRUE,height=12, width=18,echo=F,eps=FALSE>>=
+%#print(xyplot(meanThetaByYear.ts[,coldtopics], layout=c(3,3),screens=c(rep(1:9, each=3)), superpose=T, auto.key=list(space="right"), ylim = c(0, 0.015)))
+%print(xyplot(meanThetaByYear.ts[,coldtopics],
+%	layout = c(3,3),
+%	screens = c(rep(1:9, each = 3)),
+%	superpose = T,
+%	auto.key = list(space = "right"),
+%	ylab = "Mean theta",
+%	xlab = "Year",
+%	ylim = c(0, 0.015)
+%	))
+%
+%#plot(meanThetaByYear.df[names(hottopics)])
+%@
+%\caption{variant 2}
+%\label{fig:2}
+%\end{center}
+%\end{figure}

@@ -1,0 +1,229 @@
+\chapter{Analyzing the 1991 to 2001 Corpus of PNAS Journal Abstracts}
+\label{ch:analysing-pnas}
+
+The \emph{Proceedings of the National Academy of Sciences} (\acronym{Pnas}) is a multi-disciplinary, peer-reviewed scientific journal with a high impact factor \citep{PNAS2010a}. First published in 1915, it is the official journal of the U.S. National Academy of Sciences. Its coverage includes scientific articles from physical, social and biological sciences, with the latter category accounting for the largest part of papers (Figure \ref{fig:category-frequency} on p. \pageref{fig:category-frequency} shows the distribution of categories for the year 2001, similarly in \citealt{Erosheva2004}).
+
+\defcitealias{Griffiths2004}{GS04}
+
+In May~2003 the National Academy of Sciences sponsored the colloquium ``Mapping Knowledge Domains'' to present and discuss modern information retrieval and text mining techniques. Participants of the colloquium were given access to a collection of \acronym{Pnas} full text documents ranging from 1997 to 2002, which the researchers could use as showcase data in their presentations \citep{Shiffrin2004}. Two papers on probabilistic topic models were published as part of the colloquium's proceedings in \acronym{Pnas}: ``Mixed-membership models of scientific publications'' \citep{Erosheva2004} and ``Finding scientific topics'' \citep{Griffiths2004} (also referred to hereinafter as \citetalias{Griffiths2004}). The paper by Griffiths and Steyvers gives a thorough introduction to Latent Dirichlet Allocation and is the first to demonstrate the use of Gibbs sampling to fit these models. It also shows different applications of fitted models that were later refined by more complex model specifications like dynamic topic models.
+
+
+
+In this chapter I aim at replicating the experiments in \citetalias{Griffiths2004}. The reasons for this are manifold: Firstly, the results in their paper are significant for information retrieval as well as highly interpretable and interesting and therefore merit a second look and detailed notes on replicating these results. Secondly, the replication in \proglang{R} should correspond to the paper's findings and -- as a side effect -- test the relatively new package \pkg{topicmodels} on a large dataset. Thirdly, access to the online \acronym{Pnas} articles, abstracts and metadata is free and thus relatively easy to obtain via web-scraping (see below).
+
+The following section deals with retrieving and preprocessing of the \acronym{Pnas} corpus. Later sections are dedicated to documenting the processes of model selection, examining the relationship between category designations and topics, as well as trends in topic frequency as previously reported by \citetalias{Griffiths2004}. The last section shows how documents can be tagged and highlighted by using the model data.
+
+
+\section{Retrieving and Preprocessing the Corpus}
+
+The \acronym{Pnas} web page gives full and free access to all published content (including full text) from the first issue in 1915 to the most recent journal issues (available for free only six months after print publication). There is no direct access to the data in structured form such as \acronym{Csv} or \acronym{Xml} which could easily be imported via the \proglang{R} package \pkg{tm}, therefore I had to prepare scripts for the automated downloading of all abstracts from 1991 to 2001. This process is called \textbf{web scraping} and there are a variety of frameworks for web scraping as stand-alone applications or in high-level programming languages like \proglang{Perl} or \proglang{Python}. For many projects, such as this one, a combination of standard Unix text processing tools and \texttt{wget} or \texttt{curl} would usually suffice, and my first attempt at writing a scraper was implemented in these standard Unix tools. Driven by the desire to have a more robust and maintainable code base, I later reimplemented the scraper in \proglang{Python}, which is discussed in this subsection and in Appendix \ref{ch:web-scraping}.
+It should also be mentioned that \proglang{R} has support for web scraping via the built-in function \texttt{readLines()} or packages like \pkg{RCurl} \citep{TempleLang2010}.
+
+\subsection{Legal Clearance}
+Web scraping often touches on the subject of legality and morality of downloading copyrighted material. In this case this was not an issue because the ``Proprietary Rights Notice'' (\url{http://www.pnas.org/site/misc/terms.shtml}) allows the viewing and storing of journal copies for personal, noncommercial use. Even mass downloading of articles is easily possible because the usual protection against automated access by web crawlers, the file \texttt{robots.txt}, was not active. To be sure however, I contacted \acronym{Pnas}' Kat Rodenhizer (production staff) via email in April 2010 to state my intentions. Part of her answer was: 
+\begin{quote}
+``[\dots] Because you will not be directly copying any material from our papers, no additional permission is required from us,  however if you decide later on to include any figures, tables, graphs, etc. from any of our papers into your thesis, please contact us back to secure permission. [\dots]''
+\end{quote} 
+
+
+\subsection{Web Scraping}
+
+The complete process of making the 1991 to 2001 corpus of \acronym{Pnas} abstracts available as a \pkg{tm} \texttt{Corpus} object is documented in Appendix \ref{ch:web-scraping}.
+
+I assume that the authors of ``Finding scientific topics'' had at least a partially web-scraped corpus of abstracts, because the official corpus provided by the National Academy of Sciences only covered the full texts of the years~1997 to~2001~\citep{Shiffrin2004}. There is no mention of this in their article, they only thank Kevin Boyack (member of the organizing committee) for providing the abstract categories (which were part of the official corpus in Microsoft~Access~97 format).
+
+
+
+\subsection{Importing the Corpus and Generating a Document-Term Matrix in \textsf{R}}
+
+The result of the web scraping in Appendix~\ref{ch:web-scraping} is a \pkg{tm}~corpus that still needs to be converted into a document-term matrix, which is the standard input for fitting topic models that rely on the bag-of-words assumption (i.e., word order is not important). 
+The conversion to a document-term matrix (\acronym{Dtm}) is also handled by the \pkg{tm} package and is usually a simple call of the function \texttt{DocumentTermMatrix()} with the corpus as an argument and a list of parameters. These parameters determine the data available to the topic model and therefore influence how the model is fitted. Common steps of preprocessing have been listed in Chapter~\ref{sect:tm-preprocessing}.
+For this analysis I followed the parameters of \citetalias{Griffiths2004}, which can be mostly found on page~5231 of their article. Table~\ref{tbl:pnas-corpussummary} on page~\pageref{tbl:pnas-corpussummary} summarizes these parameters. Values that are in parentheses were not specified explicitly in their paper and therefore were assumed or deduced by me. These cases are: 
+\begin{enumerate}
+\item the \textbf{minimum word length} -- which can be derived from one of the examples of topic terms which also include two-letter words;
+\item \textbf{abstract headings} -- it is unsure whether Griffiths and Steyvers included the abstract titles with the main document. Given the additional information they present for model learning, I decided to merge them with the abstracts. If headings are not part of a document, the document term matrix's vocabulary size decreases by 518~words and the total word occurrence is reduced by 246,107. The average document length would drop to 98.7~terms.
+\end{enumerate}
+
+The discrepancies of vocabulary size and total word occurence between the original article and my re-analysis can be explained by one or more of the following reasons:
+\begin{itemize}
+\item Different approaches to extracting data from the \acronym{Pnas} online articles, resulted in a \textbf{lower number of documents} produced by my web-scraper. \citeauthor{Griffiths2004} possibly included (uncategorized) commentaries, corrections and/or retractions in their document collection, which I omitted.
+\item The \textbf{tokenizer} in the original paper used any white-space or other delimiting character (including hyphens) to separate words, whereas the \pkg{tm} tokenizer separates by white-space (space or tab characters) only and removes punctuation in a later step. In my replication this leads to potentially longer words by keeping hyphenated compound terms like   ``hydrogen-oxygen'' as ``hydrogenoxygen''.
+\item As mentioned above, it is unclear whether Griffiths and Steyvers considered \textbf{abstract headings }as part of a whole document.
+\item The exact list of \textbf{stop words} is unknown.
+\item The \textbf{order of text preprocessing steps} could have slightly influenced the final outcome.
+\end{itemize}
+
+
+\input{application-pnas/corpus-and-dtm}
+
+
+
+\section{Model Selection}
+
+Repeated model samples from the Gibbs sampler with different parameters were used to calculate marginal likelihoods of the corpus given the number of topics, $p(w|K)$. Table~\ref{tbl:modelselection-chains} shows all combinations of parameters and sample chains. The Dirichlet hyperparameters were fixed at $\beta=0.1$ (topics) and $\alpha=50/K$ (documents). In their paper Griffiths and Steyvers summarize the outcome of their model selection in a figure that shows the calculated marginal log-likelihoods per number of topics. A maximum at 300~topics is clearly visible, which they describe as a typical outcome of ``varying the dimensionality of a statistical model, with the optimal model being rich enough to fit the information available in the data, yet not so complex as to begin fitting noise'' \citepalias[p. 5231]{Griffiths2004}.
+
+\begin{table}[htbp] \footnotesize %here
+\begin{center}
+\begin{tabular}{rllll}
+  \toprule
+  \textbf{Number of topics (k)} & \textbf{Chains} & \textbf{Samples} & \textbf{Burn-in interval}& \textbf{Sample lag}\\
+  \midrule
+  50; 100; 200; 300; 400; 500; 600 & 8 & 10 per chain& 1,100 & 100 \\
+  1,000 & 6 & 2 per chain & 800 & 100 \\
+  \midrule
+  \textbf{Total} & 62 & 572 & - & - \\
+  \bottomrule
+\end{tabular}
+\caption{Overview of chains for model selection, as in \citetalias{Griffiths2004}.}
+\label{tbl:modelselection-chains}
+\end{center}
+\end{table}
+
+The basis for replicating aforementioned results is a modification to the \pkg{topicmodels} source and a collection of wrapper functions in the file \texttt{lda-gibbs-tools.R} (see Section~\ref{sect:implementation-modelselection}). Calculating the model samples was delegated to the \textbf{Cluster@WU,} which is the high-performance computing infrastructure at the Vienna University of Economics and Business (\acronym{Wu}). An introduction to the Sun Grid Engine (\acronym{Sge}) and a short example job are given in Appendix~\ref{ch:sge}.
+
+The scripts for carrying out the model selection are described below:
+
+\begin{description}
+  \item[sge-modelselection-chains.R] (listing: Appendix~\ref{code:sge-modelselection-chains.R} on page~\pageref{code:sge-modelselection-chains.R}): This script makes use of the parallelizing capabilities of the \acronym{Sge} to generate six to eight sample chains per topic number~$K$ (see Table~\ref{tbl:modelselection-chains}), each with a different seed to the random number generator. For each sub-job, one sample chain is generated by a call of \texttt{ldaGibbsSamples()} and later saved as a unique \texttt{.RData} file. Also saved are the parameters, which are identical for all jobs and therefore repeatedly overwritten. I submitted the script twice, each time with different random seed parameters that still lead to similar results. Completion of the job took approximately three to four days (running time for multiple runs of identical jobs varies because of changing cluster workloads). 
+
+\item[modelselection-chain-sizes.R (optional)]: The generated data took up a total of 15.4~GB as compressed \proglang{R} data files and 110~GB in memory, as reported by \proglang{R}'s \texttt{object.size()} function. This script extracts these sizes and can be found in Appendix~\ref{code:modelselection-chain-sizes.R}.
+
+\item[sge-modelselection-likelihoods.R] (listing: Appendix~\ref{code:sge-modelselection-likelihoods.R}): Reads each of the previously generated chains, calculates the estimated log-likelihood by applying \\ \texttt{harmonicMeanPwT()} and saves the result as a \texttt{data.frame} object in a \texttt{.RData} file.
+\end{description}
+
+
+\subsection{Result of Model Selection}
+
+The following \proglang{R} code loads the previously saved dataframe and plots a figure similar to Figure~3 in \citet{Griffiths2004}.
+
+\input{application-pnas/modelselection-result}
+
+Given the fixed hyperparameters and a choice of number of topics~$K$ ranging from 50 to 1,000~topics, we see that a number of 300~topics accounts best for the corpus. The same result was reached by \citetalias{Griffiths2004}, therefore I consider this part of the replication a success.
+
+
+The following sections deal with exploring the \acronym{Pnas} corpus via a fitted \acronym{Lda} model, as presented in \citet[page~5232]{Griffiths2004}. 
+
+Common elements in these sections are:
+\begin{itemize}
+\item All code listings require the package \pkg{topicmodels} with its package dependencies (\pkg{tm} and others) to be loaded.
+ \item An \acronym{Lda} model of the 1991 to 2001 \acronym{Pnas} corpus, returned after 2,000 iterations of Gibbs sampling, with $K=300$ topics, and Dirichlet hyperparameters $\beta=0.1$ (topics) and $\alpha=50/K$ (documents). In \pkg{topicmodels} these are the default hyperparameters, therefore they need not be specified. The \acronym{Lda} model is fitted by running the following \proglang{R} code:
+\input{application-pnas/lda-model-fitting}
+ Tables with the twelve most probable terms of all 300 topics are available in Appendix~\ref{ch:example-terms}.
+
+\item Figures were plotted with the \pkg{lattice} package. Source code for these figures was omitted in order to improve readability and can be found in Appendix \ref{ch:appendix-source-code-listings}. An introduction to \pkg{lattice} is given in \citet{Sarkar2008}. 
+
+\end{itemize}
+
+\section{Relations between Topics and Categories (Year~2001)}
+\label{sect:classification-2001}
+
+As explained in Section~\ref{sect:lda-exploring-meta}, one possible use of a fitted model is to closely examine the relation between the estimated topics and another (meta)variable in the corpus. In \citetalias{Griffiths2004} the section ``Scientific Topics and Classes'' is dedicated to analysing the correspondence of a model's topics and \acronym{Pnas} article categories.
+
+The \acronym{Pnas} journal requires authors to classify their submissions according to the schema laid out in the Information for Authors, which is published in the first printed issue of the year and online at \url{http://www.pnas.org/site/misc/iforc.shtml}. There are three major categories (Physical, Social and Biological Sciences) and around 30 to 40 minor categories available, depending on the submission year. In 2001 there were 33 minor categories (shown in Table~\ref{tbl:pnas-classification}), whereas the most recent (2010) number of possible designations has increased to 42 and includes additions such as Sustainability Science or substitutions (from Ecology to Environmental Sciences).
+
+A minor category might also appear in two different major categories. For example, in 2001 the minor categories Anthropology and Psychology were available in both Social and Biological Sciences. In \citetalias{Griffiths2004} and in this section such categories were treated as two distinct categories.
+
+\begin{table}[htbp] \footnotesize %here
+\begin{center}
+\begin{tabular}{l p{12cm}}
+  \toprule
+   \textbf{Major category} & \textbf{Minor categories} \\
+  \midrule
+  Physical Sciences & Applied Mathematics, Applied Physical Sciences, Astronomy, Chemistry, Engineering, Geology, Geophysics, Mathematics, Physics and Statistics\\
+
+  Social Sciences & Anthropology, Economic Sciences, Psychology and Social Sciences\\
+
+  Biological Sciences & Agricultural Sciences, Anthropology, Applied Biological Sciences, Biochemistry, Biophysics, Cell Biology, Developmental Biology, Ecology, Evolution, Genetics, Immunology, Medical Sciences, Microbiology, Neurobiology, Pharmacology, Physiology, Plant Biology, Population Biology and Psychology\\
+
+    \bottomrule
+\end{tabular}
+\caption{\acronym{Pnas} major and minor article categories (2001).}
+\label{tbl:pnas-classification}
+\end{center}
+\end{table}
+
+Also mentioned in the Information for Authors is the possibility for submissions of ``dual classifications [...] between major categories and in exceptional cases, subject to Editorial Board approval, within a major category''. These additional metadata were taken into account by the web scraping scripts but were ignored in \citet{Griffiths2004} and this thesis. This means that if two categories were specified on an issue web page, the first one was used.
+
+The goal of this section is to visualize the differences and similarities between the categories and the topics estimated by the model. %As will be shown, 
+
+\input{application-pnas/classifications}
+
+\subsection{Comparison with Original Paper and Interpretation}
+
+Minor differences between \citetalias{Griffiths2004} and my results are different topic numbers and term distributions within the topics, caused by the randomization in the algorithm. Also of note is the (accidental?) omission of the category ``Statistics'' in \citetalias{Griffiths2004}.
+
+\begin{figure}[htbp]
+\begin{center}
+\includegraphics[keepaspectratio=true]{griffiths-steyvers-2004-figure-4.png} % .pdf
+\caption{Figure~4 (\emph{Upper}) from \citetalias{Griffiths2004}: ``Mean values of $\theta$ at each of the diagnostic topics for all 33~PNAS minor categories, computed by using all abstracts published in~2001.''}
+\label{fig:griffiths-steyvers-2004-figure-4}
+\end{center}
+\end{figure}
+
+
+Figure \ref{fig:levelplot-most-diagnostic} on page~\pageref{fig:levelplot-most-diagnostic} closely resembles Figure~4 of the original paper (shown in Figure~\ref{fig:griffiths-steyvers-2004-figure-4} on page~\pageref{fig:griffiths-steyvers-2004-figure-4}), which is explained by the authors in the following way:
+
+``The strong diagonal is a consequence of our selection procedure, with diagnostic topics having high probability within the classes for which they are diagnostic, but low probability in other classes. The off-diagonal elements illustrate the relationships between classes, with similar classes showing similar distributions across topics'' \citep[p.~5232]{Griffiths2004}.
+
+For example, easily recognisable in both \citetalias{Griffiths2004}'s and my version is Topic~13 (Topic~2 in the original paper) as diagnostic for the categories ``Geology'', ``Geophysics'' and ``Ecology'', where it seems to relate to global climate change. In my version it was also chosen by the model as diagnostic for ``Astronomy'' whereas in \citetalias{Griffiths2004} it is not the most diagnostic topic but still ranks among the most probable topics. Also, the diagnostic topic (Topic~236) for category ``Social Sciences'' with only two abstracts, still managed to capture some of the semantic differences.
+The second version of the levelplot in Figure~\ref{fig:levelplot-most-diagnostic-by-prevalence} on page~\ref{fig:levelplot-most-diagnostic-by-prevalence} helps in estimating how well the topic model works even when category frequencies are skewed.
+
+\input{application-pnas/classifications-original-topics-table.tex}
+
+As to the term distribution within topics, a rough visual comparison of my Table~\ref{tbl:classifications-most-diagnostic-five-terms} on page~\pageref{tbl:classifications-most-diagnostic-five-terms} to \citetalias{Griffiths2004}'s Table \ref{tbl:classifications-original-topics-table} on page~\pageref{tbl:classifications-original-topics-table} shows that many topics are similar in their composition, even though the corpus, the preprocessing and the learning steps were not the same.
+
+I therefore consider the replication of this part of \citetalias{Griffiths2004}'s article a success and note that \acronym{Lda} is a robust tool that produces similar outcomes even in applications where starting conditions are not identical.
+
+
+\section{Hot and Cold Topics}
+Section ``Hot and cold topics'' in \citet{Griffiths2004} describes how another metavariable, namely year of publication, can be used to explore the corpus. Instead of averaging over categories we now are interested in the mean $\theta$ by years.
+
+\input{application-pnas/trends}
+
+\subsection{Comparison with Original Paper and Interpretation}
+
+\begin{figure}[htbp]
+\begin{center}
+\includegraphics[keepaspectratio=true]{griffiths-steyvers-2004-figure-5.png} % .pdf
+\caption{Figure~5 (\emph{Upper}) from \citetalias{Griffiths2004}: ``[\dots] the dynamics of the three hottest and three coldest topics from 1991 to 2001, defined as those topics that showed the strongest positive and negative linear trends.``}
+\label{fig:griffiths-steyvers-2004-figure-5}
+\end{center}
+\end{figure}
+
+\input{application-pnas/trends-original-terms-table.tex}
+
+Figure~\ref{fig:griffiths-steyvers-2004-figure-5} (page~\pageref{fig:griffiths-steyvers-2004-figure-5}) and Table~\ref{tbl:trends-original-terms} (page~\pageref{tbl:trends-original-terms}) show the results in \citetalias{Griffiths2004}. A comparison with my results in Figure~\ref{fig:trends-five-hot-and-cold} (page~\pageref{fig:trends-five-hot-and-cold}) and Table~\ref{tbl:trends-terms} (page~\pageref{tbl:trends-terms}), respectively, indicates that the replication is very close to the original. The original three coldest topics can easily be recognised among the four coldest topics from the replication. Also, the three hottest topics can be matched, although with different ranks.
+
+For the interpretation I provide an adapted full quote from \citet[pp. 5233--5234]{Griffiths2004} (my additions in brackets):
+\begin{quote}
+``The three hottest and coldest topics,
+assessed by the size of the linear trend test statistic, are shown
+in Fig. 5 [here: Figure~\ref{fig:griffiths-steyvers-2004-figure-5}]. The hottest topics discovered through this analysis were
+topics 2 [here: 13], 134 [63], and 179 [17], corresponding to global warming and
+climate change, gene knockout techniques, and apoptosis (programmed cell death), the subject of the 2002 Nobel Prize in
+Physiology. The cold topics were not topics that lacked prevalence in the corpus but those that showed a strong decrease in
+popularity over time. The coldest topics were 37 [here: 248], 289 [201], and 75 [195],
+corresponding to sequencing and cloning, structural biology, and
+immunology. All these topics were very popular in about 1991
+and fell in popularity over the period of analysis. The Nobel
+Prizes again provide a good means of validating these trends,
+with prizes being awarded for work on sequencing in 1993 and
+immunology in 1989.''
+\end{quote}
+
+This concludes the replication of topics and their trends over the period 1991 to 2001. Aside from a rather different number of topics with a trend at $p=0.0001$, I can confirm the findings of Griffiths and Steyvers.
+
+
+\section{Document Tagging and Highlighting}
+
+Both \citet{Blei2003} and \citet{Griffiths2004} give examples of how to tag and highlight a document with the help of a fitted topic model. The main reason for this is to give users novel ways to browse and read through corpora or search results.
+\begin{description}
+ \item[Tagging] Because our \acronym{Lda} model provides word-to-topic assignments, we can use these data to tag each word with topic superscripts. Words that were omitted during preprocessing will remain untagged.
+\item[Highlighting] Given one reference topic per document (here: the most prevalent topic in an abstract), one can use the probability that a word belongs to this topic to set the word's color or contrast. This visualizes that topic's influence on the whole document.
+ \end{description}
+
+\input{application-pnas/tagging}
+
+\subsection{Comparison with Original Paper}
+The generated output closely matches the one printed in \citet{Griffiths2004}.
+

@@ -1,0 +1,240 @@
+\SweaveOpts{keep.source = TRUE}
+Starting now...
+<<>>=
+.libPaths("~/lib/R") # in case the environment variable R_LIBS is not available from gvim etc.
+library(topicmodels)
+@
+<<echo=F, eval=F>>=
+sessionInfo()
+load("pnasDtm.Rda")
+system.time(ldaModel <- LDA(pnasDtm, 300, method="Gibbs", control = list(iter = 2000, seed = 33)))
+#user  system elapsed for few entries
+#303.735   0.044 304.063 
+
+#> system.time(ldaModel <- LDA(dtm, 300, method="Gibbs", control = list(iter=2000)))
+#    user   system  elapsed 
+#    1447.103    1.444 1457.885
+# complete corpus:
+#    user   system  elapsed 
+#    7676.460    2.956 7683.534 
+
+save(ldaModel, file="ldaModel.Rda")
+
+# Explore model:
+#getSlots(class(ldaModel))
+# good:
+#str(ldaModel)
+@
+here we go...
+<<>>=
+# takes some time to load:
+load("ldaModel.Rda")
+load("pnas2001Meta.Rda")
+attach(pnas2001Meta) 
+
+# OK: want to sync meta (sorted by volume, month, page) and corpus Origin (page)
+# meta index, by page number
+reorderedMetaIndex <- sort(sapply(as.character(WebSuffix), function(x) strsplit(x, "/")[[1]][5]), index.return=T)$ix
+
+# factor() results in (alphabetically) ordered levels:
+categoryAssignments <- factor(paste(CatMajor, CatMinor, sep="-"))
+categoryAssignments <- categoryAssignments[reorderedMetaIndex]
+
+compactFactorNames <- sub("(Biological\ Sciences)-(.*)","\\2\ (BS)", levels(categoryAssignments), perl=TRUE)
+compactFactorNames <- sub("(Physical\ Sciences)-(.*)","\\2\ (PS)", compactFactorNames, perl=TRUE)
+compactFactorNames <- sub("(Social\ Sciences)-(.*)","\\2\ (SS)", compactFactorNames, perl=TRUE)
+
+# rename category factor
+levels(categoryAssignments) <- compactFactorNames
+
+# now we need 2001 only documents from model:
+load("pnasAbstracts.Rda") # load corpus which contains original foldername
+year <- as.integer(sapply(pnasAbstracts, function(x) strsplit(attr(x, "Origin"), "/")[[1]][2]))
+# corpus index, by page number
+reorderedCorpusIndex <- sort(sapply(pnasAbstracts[year==2001], function(x) strsplit(attr(x, "Origin"), "[/.]", perl=T)[[1]][4]), index.return=T)$ix
+
+# this is \theta as in Griffiths2004
+theta <- ldaModel@gamma[year==2001,][reorderedCorpusIndex,]
+class(theta)
+@
+first, check the frequency of categories in the corpus
+\begin{figure}[htbp]
+\begin{center}
+
+<<fig=TRUE,height=12, width=12,echo=T,eps=FALSE>>=
+# http://cran.r-project.org/doc/FAQ/R-FAQ.html#How-can-I-create-rotated-axis-labels <- 003f
+# https://stat.ethz.ch/pipermail/r-help/2009-February/187033.html
+# http://stat.ethz.ch/R-manual/R-devel/library/graphics/html/barplot.html
+
+library(lattice)
+catTable <- table(categoryAssignments)
+#reverse for printing
+catTableDisplay <- catTable[length(catTable):1]
+catTableDisplay <- rev(catTable)
+#print(barchart(catTableDisplay, ylab=NULL, xlab=""))
+#http://stackoverflow.com/questions/2147084/r-add-labels-to-lattice-barchart
+print(barchart(catTableDisplay, 
+              panel=function(...) { 
+                args <- list(...);
+                panel.barchart(..., col="#FFBBBB");
+		panel.abline(a = 4.5)
+		panel.abline(a = 14.5)
+                panel.text(args$x+10, args$y, args$x,fontsize=10) 
+              }))
+
+@
+\caption{Minor category frequency count for 2001 PNAS abstracts}
+\end{center}
+\end{figure}
+
+Now the diagnostic topics
+
+<<>>=
+# in our application theta is a ragged array (with the factors as indices)
+# mean(data.frame(c(2,1),c(4,3))), this proves that means are taken column-wise
+meanThetaList <- by(theta, categoryAssignments, mean, simplify=FALSE)
+#mode(meanThetaList)
+#attributes(meanThetaList)
+# this leaves us with a 2-dimensional list, back to the data frame format; also restore dimnames
+meanThetaPerCat <- t(as.data.frame.list(meanThetaList))
+dimnames(meanThetaPerCat)[[1]] <- compactFactorNames
+dimnames(meanThetaPerCat)[[2]] <- paste(1:ncol(meanThetaPerCat))
+
+#convert dataframe to ratios and find diagnostic topics for each category
+meanThetaCatRatios <- meanThetaPerCat
+for (ii in 1:nrow(meanThetaPerCat)) { 
+	for (jj in 1:ncol(meanThetaPerCat)) {
+		meanThetaCatRatios[ii,jj] <- meanThetaPerCat[ii,jj] / sum(meanThetaPerCat[ii,])
+		#meanThetaCatRatios[ii,jj] <- meanThetaPerCat[ii,jj] / sum(meanThetaPerCat[ii,-jj])
+	}
+}
+#mostDiagnosticTopics <- apply(meanThetaCatRatios,1,which.max)
+sortedColumnIndices <- apply(meanThetaCatRatios, 1, 
+	function(x) sort(x,decreasing = TRUE, index.return = TRUE)$ix)
+mostDiagnosticTopics <- as.vector(sortedColumnIndices[1,])
+#mostDiagnosticTopics <- unique(as.vector(sortedColumnIndices[1:5,]))
+mostDiagnosticTopics <- apply(meanThetaCatRatios,1,which.max)
+
+# check outcome
+# meanThetaPerCat[,diagnosticTopics]
+diagnosticTerms <- get_terms(ldaModel,5)[,mostDiagnosticTopics]
+dim(diagnosticTerms)
+@
+now some graphics:
+the image plot of the matrix of most diagnostic topics vs categories
+
+%meanThetaPerCat is a matrix!
+\begin{figure}[htbp]
+\begin{center}
+<<split=TRUE,fig=TRUE,height=12, width=12,echo=T,eps=FALSE>>=
+
+diagnosticTheta  <- meanThetaPerCat[,mostDiagnosticTopics]
+# because most plots' coordinate system starts at the bottom, we have to convert the data:
+dTforDisplay <- t(diagnosticTheta[nrow(diagnosticTheta):1,])
+
+majorColors <- c(as.character(NA))[1:length(compactFactorNames)]
+# http://www.colorschemer.com/online.html
+majorColors[grep("(BS)",compactFactorNames)] <- "#00CC33"
+majorColors[grep("(PS)",compactFactorNames)] <- "#0033CC"
+majorColors[grep("(SS)",compactFactorNames)] <- "#CC0099"
+names(majorColors) <- compactFactorNames
+
+classesByPrevalence <- names(sort(catTableDisplay))
+diagnosticThetaByPrevalence  <- meanThetaPerCat[,rev(mostDiagnosticTopics[classesByPrevalence])]
+dTforDisplay <- t(diagnosticThetaByPrevalence[classesByPrevalence,])
+#http://www2.warwick.ac.uk/fac/sci/moac/students/peter_cock/r/matrix_contour/
+
+# problem: there is a bias for theta, meaning no values are actually zero
+# drawing must therefore make sure to assign lower values the color "white".
+
+print(levelplot(dTforDisplay, 
+	xlab = NULL, 
+	ylab = NULL, 
+	scales = list(
+		tck = 1,
+		x = list(rot = 45),
+		y = list(col = majorColors[classesByPrevalence])),
+	cuts = 12, 
+	col.regions = gray(20:0/20), 
+	colorkey = list(space = "top"),
+	panel = function(...) {
+		panel.levelplot(...);
+		# the grid:
+		panel.abline(h = seq(1.5, 32.5), col = "lightgray");
+		panel.abline(v = seq(1.5, 32.5), col = "lightgray");
+		}
+
+	))
+
+# perhaps later: http://stackoverflow.com/questions/3231859/adding-lines-and-labels-in-lattice-barchart-r
+
+@
+\caption{Diagnostic topics mapped against categories}
+\label{fig:classification}
+\end{center}
+\end{figure}
+
+Terms of most diagnostic topics (table)
+
+\begin{table}
+<<echo=FALSE, results=tex>>=
+# https://stat.ethz.ch/pipermail/r-help/2009-September/212798.html
+library(xtable)
+diagTermsDisplay <- diagnosticTerms[,unique(colnames(diagnosticTerms))]
+topicsPerTab <- 6
+topicsTotal <- ncol(diagTermsDisplay)
+for(i in 1:(topicsTotal %/% topicsPerTab)) { 
+	xTable <- xtable(diagTermsDisplay[,(topicsPerTab * (i-1) + 1):(topicsPerTab * i), drop = FALSE])
+	xTableStrings <- unlist(strsplit(capture.output(print(xTable)), "\n"))	
+	xTableStrings <- xTableStrings[xTableStrings != "\\begin{table}[ht]"]
+	xTableStrings <- xTableStrings[xTableStrings != "\\end{table}"]
+	cat(xTableStrings, sep = "\n")
+}
+if((topicsTotal %% topicsPerTab) != 0) {
+	xTable <- xtable(diagTermsDisplay[,(topicsPerTab*i + 1):topicsTotal, drop = FALSE])
+	xTableStrings <- unlist(strsplit(capture.output(print(xTable)), "\n"))	
+	xTableStrings <- xTableStrings[xTableStrings != "\\begin{table}[ht]"]
+	xTableStrings <- xTableStrings[xTableStrings != "\\end{table}"]
+	cat(xTableStrings, sep = "\n")
+}
+@
+\caption{Unique diagnostic topics and their 5 most probable terms}
+\end{table}
+
+5 most probable topics per category, double entries removed
+
+\setkeys{Gin}{width=1.5\textwidth}
+\setkeys{Gin}{height=0.8\textwidth}
+\begin{landscape}
+\begin{figure}[!h]
+\begin{center}
+<<fig=TRUE,height=12, width=30,echo=F,eps=FALSE>>=
+#sortedColumnIndices <- apply(meanThetaCatRatios,1,function(x) sort(x,decreasing = TRUE, index.return = TRUE)$ix)
+fiveMostDiagnosticTopics <- unique(as.vector(sortedColumnIndices[1:5,]))
+#length(unique(as.vector((indices[1:7,]))))
+
+# because most plots' coordinate system starts at the bottom, we have to convert the data:
+dTforDisplay <- t(meanThetaCatRatios[nrow(meanThetaCatRatios):1,fiveMostDiagnosticTopics])
+
+print(levelplot(sqrt(dTforDisplay), 
+	xlab = NULL, 
+	ylab = NULL, 
+	scales = list(tck = 1, x = list(rot = 45)), cuts = 10, col.regions = colorpanel(100, "white", "grey10"), colorkey = list(space = "top"),
+	panel = function(...) {
+		panel.levelplot(...);
+		panel.abline(h = 4.5);
+		panel.abline(h = 14.5);
+		#panel.abline(v = length(fiveMostDiagnosticTopics)-8.5);
+		#panel.abline(v = length(fiveMostDiagnosticTopics)-31.5);
+		}
+		))
+
+@
+\caption{Five most probable topics per category, with duplicate topics removed}
+\label{fig:classification-2}
+\end{center}
+\end{figure}
+\end{landscape}
+
+@
+

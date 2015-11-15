@@ -1,0 +1,64 @@
+\SweaveOpts{keep.source = F}
+<<echo=FALSE>>=
+options(width=68)
+#options(continue=" ")
+#.libPaths("~/lib/R") # in case the environment variable R_LIBS is not available from gvim etc.
+library(topicmodels)
+@
+We start by loading the model and our corpus of \acronym{Pnas} abstracts:
+<<>>=
+load("model-lda-gibbs-300topics.RData")
+load("pnas-abstracts-tm-corpus.RData")
+@
+\subsection{Finding the Example Abstract from Griffiths/Steyvers
+(2004)}
+In order to find out which abstract was used in
+\citetalias{Griffiths2004}, we have to search for words that are part
+of this abstract, for this thesis I chose ``generalized'' and
+``fundamental''
+which come as second and third words in the example given by
+\citet[Fig.~6, p.~5234]{Griffiths2004}. A simple lookup by abstract tokens is
+performed by the following \proglang{R} code:
+<<eval=T>>=
+corpus_tokens <- sapply(abstracts_corpus, function(x) strsplit(x, " "))
+#example_abstract <- 0L
+for(dd in 1:length(corpus_tokens)) {
+    if(isTRUE(all.equal(corpus_tokens[[dd]][2:3],
+    c("generalized","fundamental")))) {
+        print(dd);
+        example_abstract <- dd
+    }
+}
+@
+At these positions the words appear in only one abstract, which
+is number~\Sexpr{example_abstract}, with the heading 
+``\Sexpr{Heading(abstracts_corpus[[example_abstract]])}''.
+<<>>=
+@
+\subsection{Tagging and Highlighting of an Abstract}
+We can now call function \texttt{document\_tag\_latex()} (see
+Appendix~\ref{code:tagging-document-tag-latex.R}) to highlight
+the example abstract by the most prevalent topic and tag words with assigned topics as
+superscripts.
+
+\vspace{6 mm}
+<<label=03, echo=FALSE, results=tex>>=
+# loads xtable
+source("tagging-document-tag-latex.R")
+@
+\vspace{8 mm}
+
+To put this abstract into context, we provide a table with
+its five most probable topics and their twelve most probable terms:
+
+<<>>=
+@
+\begin{table}[htbp]\footnotesize
+<<echo=FALSE, results=tex>>=
+source("tagging-table-topics-most-prevalent.R")
+@
+\caption{Abstract \Sexpr{example_abstract}: Five most probable
+topics and their twelve most probable terms (listing:
+Appendix~\ref{code:tagging-table-topics-most-prevalent.R}).}
+\end{table}
+

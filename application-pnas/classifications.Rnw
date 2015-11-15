@@ -1,0 +1,262 @@
+\SweaveOpts{keep.source = TRUE}
+%\DefineVerbatimEnvironment{Sinput}{Verbatim} {xleftmargin=2em}
+%\DefineVerbatimEnvironment{Soutput}{Verbatim}{xleftmargin=2em}
+\fvset{listparameters={\setlength{\topsep}{0pt}}}
+\renewenvironment{Schunk}{\vspace{\topsep}}{\vspace{\topsep}}
+\setkeys{Gin}{width=1.0\textwidth}
+<<echo=false, label=01>>=
+options(width = 68)
+#options(continue=" ")
+options(SweaveHooks = list(fig = function() par(mar = c(5.1, 4.1, 1.1, 2.1))))
+@
+<<echo=F, eval=T, label=02>>=
+#.libPaths("~/lib/R") # in case the environment variable R_LIBS is not available from gvim etc.
+# Explore model:
+#getSlots(class(ldaModel))
+# good:
+#str(ldaModel)
+library("topicmodels")
+@
+\subsection{Preparations and Showing the Category Distribution for 2001}
+
+%First we load the fitted LDA model (1991 to 2001) and the corpus metadata
+First we load the corpus metadata
+which is in \texttt{data.frame} format:
+<<label=03>>=
+load("pnas-abstracts-meta-dataframe.RData")
+@
+In the next code chunk the categories of year~2001 are
+prepared for a figure showing their frequencies and also later
+analyses. The result is a data frame with 33~rows containing 
+names of major, minor, abbreviated major categories and combined
+names in a shortened format for the figure to be printed. The
+rows are sorted first by major and then minor category.
+%# factor() results in (alphabetically) ordered levels:
+<<label=04>>=
+categories_2001_major <-
+    abstracts_meta$category[abstracts_meta$year==2001]
+categories_2001_minor <-
+    abstracts_meta$category_minor[abstracts_meta$year==2001]
+
+categories_2001 <- data.frame(major=categories_2001_major,
+    minor=categories_2001_minor, stringsAsFactors = FALSE)
+
+categories_2001$major_abbr <- factor(categories_2001_major)
+levels(categories_2001$major_abbr) <- c("(BS)","(PS)","(SS)")
+
+categories_2001$pretty <-
+    paste(categories_2001$minor, categories_2001$major_abbr)
+@
+For two figures in this section we also want to differentiate major
+categories by color, therefore we assign color codes:
+%# http://www.colorschemer.com/online.html
+<<label=05>>=
+category_levels <- unique(categories_2001)
+category_levels <- category_levels[order(category_levels$major,
+    category_levels$minor),]
+rownames(category_levels) <- category_levels$pretty
+
+category_levels$color <- factor(category_levels$major)
+levels(category_levels$color) <- c("#00CC33","#0033CC", "#CC0099")
+category_levels$color <- paste(category_levels$color)
+
+@
+In order to get an impression of how the categories are
+distributed in the 2001~corpus, we use \pkg{lattice} to print a
+barplot of the class frequencies (Figure~\ref{fig:category-frequency}
+on page~\pageref{fig:category-frequency}, listing: Appendix~\ref{code:classifications-fig-category-frequency.R}).
+One can clearly see the dominance of biological sciences in the
+diagram. As will be shown, our analyses are robust enough to cope
+with this skewed input.
+
+\begin{figure}[htbp]
+\begin{center}
+<<label=06, fig=TRUE, height=8, width=10, echo=F, eps=FALSE>>=
+# loads lattice
+source("classifications-fig-category-frequency.R")
+#plot(trellis.last.object())
+@
+\caption{Minor category frequency counts for 2001~PNAS abstracts.}
+\label{fig:category-frequency}
+\end{center}
+\end{figure}
+
+\subsection{Finding the Diagnostic Topics}
+In order to match topics and author-assigned categories, a series
+of steps is necessary.
+First we load the fitted \acronym{Lda} model (1991 to 2001):
+%and the corpus metadata which is in \texttt{data.frame} format. 
+<<label=07>>=
+load("model-lda-gibbs-300topics.RData")
+@
+%Next we load the complete corpus:
+%\ti{not necessary?!, reorder subsections}
+%<<label=07>>=
+%#load("pnas-abstracts-tm-corpus.RData")
+%@
+%# sort by index!
+%#theta_2001 <- model_lda@gamma[abstracts_meta$year == 2001,]
+%#[reorderedCorpusIndex,]
+and then we extract $\theta$ (the per-document
+probabilities for topics) for the year 2001 from the
+fitted model's topic posteriors:
+<<label=08>>=
+theta <- posterior(model_lda)$topics[abstracts_meta$year == 2001,]
+@
+
+Afterwards we reduce $\theta$, which is a
+\Sexpr{format(nrow(theta),big.mark=",")} (abstracts) by \Sexpr{ncol(theta)} (topics) matrix,
+by taking the mean by categories which serve as an index to this
+``ragged array''. This leaves us with the \texttt{matrix}
+\texttt{theta\_mean}:
+%# in our application theta is a ragged array (with the factors as indices)
+%# mean(data.frame(c(2,1),c(4,3))), this proves that means are taken column-wise
+%# http://stackoverflow.com/questions/2619618/convert-a-by-object-to-a-data-frame-in-r
+<<label=09>>=
+theta_mean_by <- by(theta, categories_2001$pretty, colMeans)
+theta_mean <- do.call("rbind", theta_mean_by)
+#theta_mean <- matrix(theta_mean_do_call,
+    #nrow = nrow(theta_mean_do_call),
+    #dimnames = (dimnames(theta_mean_do_call)))
+
+
+
+#theta_mean_ag <- aggregate(theta, list(categories_2001$pretty), mean)
+#rownames(theta_mean_ag) <- theta_mean_ag$Group.1
+#theta_mean_ag <- theta_mean_ag[-1]
+#dim(theta_mean_ag)
+#colnames(theta_mean) <- paste(seq_along(theta_mean))
+@
+With all categories' mean $\theta$ available, it is now possible to
+select the most diagnostic (i.e., representative) topics of each
+of these categories. Griffiths and Steyvers defined a diagnostic
+topic of a category $d_c$ as the topic~$j$ which has the highest
+ratio of $\theta$ to the sum of all other categories'~$\theta$. This
+criterion can be expressed as a formula (with $C$ and $J$ denoting the set
+of all categories and all topics, respectively; and $r$ denoting
+categories different from $c$):
+
+%\ti{argmax: topic j in...?, BG: alternativ: Nenner mal (1 durch (Betrag C -1))?}
+
+\begin{equation*}
+\mbox{Diagnostic topic of category $c$: }d_c = \underset{j \in J
+}{\operatorname{arg\,max}}\,\frac{\theta^{(c)}_j}{\displaystyle\sum_{\substack{r \in C\\ r\neq c}}{\theta^{(r)}_j} }
+\end{equation*}
+
+In \proglang{R} the ratios are first calculated in a nested
+\texttt{for} loop and then sorted by size in a separate index
+matrix. This allows for easy selection of one or more of the topics (and
+their corresponding $\theta$ values) with the highest and
+therefore most representative ratios.
+<<label=10>>=
+theta_mean_ratios <- theta_mean
+for (ii in 1:nrow(theta_mean)) { 
+    for (jj in 1:ncol(theta_mean)) {
+        theta_mean_ratios[ii,jj] <-
+            theta_mean[ii,jj] / sum(theta_mean[ii,-jj])
+    }
+}
+topics_by_ratio <- apply(theta_mean_ratios, 1, 
+    function(x) sort(x, decreasing = TRUE, index.return = TRUE)$ix)
+@
+%#mostDiagnosticTopics <- unique(as.vector(sortedColumnIndices[1:5,]))
+%mostDiagnosticTopics <- apply(meanThetaCatRatios,1,which.max)
+The most diagnostic topics per category are found in the first
+row of the index matrix:
+<<label=11>>=
+topics_most_diagnostic <- topics_by_ratio[1,]
+@
+\subsection{Visualising Topics and Categories}
+We can now reduce the mean $\theta$
+matrix to just the most diagnostic topics per category:
+<<label=12>>=
+theta_diagnostic <-
+    theta_mean_ratios[,topics_most_diagnostic]
+colnames(theta_diagnostic) <- topics_most_diagnostic
+@
+Figure~\ref{fig:levelplot-most-diagnostic} on page~\pageref{fig:levelplot-most-diagnostic} shows the
+\pkg{lattice} \texttt{levelplot} of this reduced matrix. The source code for generating this plot can be found in Appendix~\ref{code:classifications-fig-levelplot-most-diagnostic.R}.
+
+%\setkeys{Gin}{width=1.0\textwidth}
+\begin{figure}[htbp]
+\begin{center}
+<<label=13, fig = TRUE, height = 7, width = 9, echo = FALSE, eps = FALSE>>=
+source("classifications-fig-levelplot-most-diagnostic.R")
+@
+\caption{Mean $\theta$ of 2001 categories by most diagnostic topics.}
+\label{fig:levelplot-most-diagnostic}
+\end{center}
+\end{figure}
+
+Complementing Figure~\ref{fig:levelplot-most-diagnostic}, Table~\ref{tbl:classifications-most-diagnostic-five-terms} on
+page~\pageref{tbl:classifications-most-diagnostic-five-terms} shows
+the five most probable terms per unique diagnostic topic, with
+rank~1 denoting the most probable term. The
+table was generated by the \texttt{xtable()} function from the
+package of the same name \citep{Dahl2009}. The function call is documented in
+Appendix~\ref{code:classifications-table-most-diagnostic-five-terms.R}.
+
+\begin{table}[htbp]
+\footnotesize
+<<echo=FALSE, results=tex>>=
+# https://stat.ethz.ch/pipermail/r-help/2009-September/212798.html
+source("classifications-table-most-diagnostic-five-terms.R")
+@
+\caption{Unique diagnostic topics of 2001 and their five most
+probable terms.}
+\label{tbl:classifications-most-diagnostic-five-terms}
+\end{table}
+
+A different version of the previous levelplot is shown in Figure~\ref{fig:levelplot-most-diagnostic-by-prevalence} on page~\pageref{fig:levelplot-most-diagnostic-by-prevalence}. 
+The columns and rows were reordered to show the
+most to least frequent categories in the 2001~corpus, with the
+most frequent at the top. This version is useful when the
+category frequencies are skewed (which they are in this case) and one
+wants to get an impression of the model's quality.
+
+The source for Figure~\ref{fig:levelplot-most-diagnostic-by-prevalence} can be found in
+Appendix~\ref{code:classifications-fig-levelplot-most-diagnostic-by-prevalence.R}.
+
+%\setkeys{Gin}{width=1.0\textwidth}
+\begin{figure}[htbp]
+\begin{center}
+%<<split=TRUE,fig=TRUE,height=10, width=10,echo=T,eps=FALSE>>=
+<<fig = TRUE, height = 7, width = 9, echo = FALSE, eps = FALSE>>=
+source("classifications-fig-levelplot-most-diagnostic-by-prevalence.R")
+@
+\caption{Mean $\theta$ of~2001 categories by diagnostic topics,
+sorted by prevalence of categories. Frequencies are listed with
+category names.}
+\label{fig:levelplot-most-diagnostic-by-prevalence}
+\end{center}
+\end{figure}
+
+A third option of visualizing the model's mean $\theta$ categories
+is given by Figure~\ref{fig:levelplot-five-most-diagnostic} on
+page~\pageref{fig:levelplot-five-most-diagnostic}. 
+The main difference to the previous levelplots is that not only
+a single topic per category was chosen but the five most
+probable topics. Also, duplicate topics were removed going from
+left to right. This explains why the matrix diagonal is not a
+straight line anymore but concave. I have decided to include this
+third version of the levelplot because it gives an impression of how
+``unique'' certain topics are.  The source code for this figure is printed in
+Appendix~\ref{code:classifications-fig-levelplot-five-most-diagnostic.R}.
+
+\begingroup
+\setkeys{Gin}{width=1.5\textwidth}
+\setkeys{Gin}{height=0.6\textwidth}
+\begin{landscape}
+\begin{figure}[htbp]
+\begin{center}
+<<fig=TRUE,height=8, width=19.5,echo=F,eps=FALSE>>=
+source("classifications-fig-levelplot-five-most-diagnostic.R")
+@
+\caption{Mean $\theta$ of categories with five most probable topics
+per category, duplicate topics removed (2001).}
+\label{fig:levelplot-five-most-diagnostic}
+\end{center}
+\end{figure}
+\end{landscape}
+\endgroup
+@

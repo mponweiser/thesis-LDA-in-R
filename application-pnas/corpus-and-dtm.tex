@@ -1,0 +1,133 @@
+
+%\DefineVerbatimEnvironment{Sinput}{Verbatim} {xleftmargin=2em}
+%\DefineVerbatimEnvironment{Soutput}{Verbatim}{xleftmargin=2em}
+%\DefineVerbatimEnvironment{Scode}{Verbatim}{xleftmargin=2em}
+%\fvset{listparameters={\setlength{\topsep}{0pt}}}
+%\renewenvironment{Schunk}{\vspace{\topsep}}{\vspace{\topsep}}
+%\setkeys{Gin}{width=1.0\textwidth}
+% From here on we work in the /pnas directory, therefore no need
+% for mentioning it
+
+% can sweave this without changing the longer parts to eval, it's
+% only a few minutes
+As a first step, we load the \pkg{tm} package and the corpus of abstracts.
+\begin{Schunk}
+\begin{Sinput}
+> library("tm")
+> load("pnas-abstracts-tm-corpus.RData")
+> load("pnas-abstracts-meta-dataframe.RData")
+\end{Sinput}
+\end{Schunk}
+
+%<<>>=
+The following lines show how the headings, which until now were saved as a separate metavariable, are merged with the abstracts. 
+\begin{Schunk}
+\begin{Sinput}
+> heading_prepend <- function(x) PlainTextDocument(
++    paste(Heading(x), x, sep = " "), origin = Origin(x), 
++    id = ID(x), language = Language(x))
+> abstracts_corpus <- tm_map(abstracts_corpus, heading_prepend)
+\end{Sinput}
+\end{Schunk}
+% tm_map took only a few seconds
+The document term matrix is constructed by:
+\begin{Schunk}
+\begin{Sinput}
+> dtm <- DocumentTermMatrix(abstracts_corpus,
++    control = list(
++        tolower = TRUE,
++        removePunctuation = TRUE,
++        ## (standard tm tokenizer, see termFreq)
++        removeNumbers= TRUE, 
++        stemming = FALSE,
++        stopwords = TRUE,
++        minWordLength = 2))
+\end{Sinput}
+\end{Schunk}
+% DocumentTermMatrix took ca. 2 minutes
+Now we reduce the matrix to words which occur in at least five
+documents:
+\begin{Schunk}
+\begin{Sinput}
+> dtm <- dtm[ , which(table(dtm$j) >= 5)]
+\end{Sinput}
+\end{Schunk}
+and save the final document-term matrix:
+\begin{Schunk}
+\begin{Sinput}
+> save(dtm, file = "abstracts-dtm.RData")
+\end{Sinput}
+\end{Schunk}
+I would like to emphasize that the resulting corpus and
+the document-term matrix are likely to be very similar to the ones
+used by Griffiths and Steyvers. It will be shown in later
+sections that all analyses that are based on this data result in outcomes that are nearly identical to the original paper.
+
+
+
+\begin{table}[htbp] \footnotesize 
+\begin{center}
+\begin{tabular}{p{4cm} p{5cm} p{5cm}}
+\toprule
+& \textbf{\citet{Griffiths2004}} & \textbf{Replication in this
+thesis} \\
+\midrule
+\emph{Corpus source} & provided by \acronym{Pnas}, as part of the Arthur M.
+Sackler colloquium \textit{Mapping Knowledge Domains} (or unknown
+source) &  downloaded from the \acronym{Pnas} webpage \\
+\emph{Number of abstracts 1991-2001} & 28,154 & 27,292\\
+\emph{Number of abstracts 2001} & 2,620 & 2,456\\
+\emph{Paper title is considered part of abstract} & (unknown) & yes \\
+\emph{Letter case} & (all upper case) & all lower case\\
+\emph{Remove punctuation} & (yes, part of tokenizer) & yes \\
+\emph{Tokenization} & ``any delimiting character, including
+hyphens[...]'' & default \pkg{tm} tokenizer \\
+\emph{Remove numbers} & yes, part of stop list & yes\\
+\emph{Stemming} & (no) & no \\
+\emph{Stop words} & ‘‘standard 'stoplist' used in computational
+linguistics, including numbers, individual characters, and some
+function words’’  & \pkg{tm}'s default \code{stopwords()} (488~words) \\
+\emph{Minimum word length} & (2) & 2 \\
+\emph{Minimum number of documents where term appears} & 5 & 5 \\
+\midrule
+\emph{Vocabulary size (\acronym{Dtm})} & 20,551 & 19,480 \\
+\emph{Total occurrence of words (\acronym{Dtm})} & 3,026,970 & 3,128,218 \\
+\emph{Average document length (\acronym{Dtm})} & 107.51~terms & 114.62~terms \\
+\bottomrule
+\end{tabular}
+\caption{Summary of \acronym{Pnas} document-term matrix and its
+construction from the corpus (abstracts from years 1991 to 2001).}
+\label{tbl:pnas-corpussummary}
+\end{center}
+\end{table}
+
+% FIDES daten: D: dim(PNAS tm)
+% # [1] D: 28162 V: 20039 nach 
+%## load("PNAS_abstracts.rda")
+%## dtm <- DocumentTermMatrix(corpus, control = list(minWordLength = 1))
+%## other: (stemming = TRUE, stopwords = TRUE, minWordLength = 3, removeNumbers = TRUE)
+%## dtm <- removeSparseTerms(dtm, 0.99)
+%
+%load("PNAS_dtm.rda")
+%
+%# Only years 1991-2001
+%PNAS_dtm <- PNAS_dtm[which(sapply(rownames(PNAS_dtm), function(x) strsplit(x, "/")[[1]][2]) %in% 1991:2001),]
+%
+%# Only terms occuring in at least 5 documents
+%PNAS_dtm <- PNAS_dtm[, which(table(PNAS_dtm$j) >=5)]
+%
+%# Remove Stopwords
+%PNAS_dtm <- PNAS_dtm[, which(!colnames(PNAS_dtm) %in% stopwords("en"))]
+%
+%# in the end...
+%dim(PNAS_dtm)
+%# [1] 28162 20039
+%sum(PNAS_dtm$v)
+%# [1] 547313
+%# Compare Griffiths & Steyvers (2004)
+%# 28154 20551
+%# 3026970
+%
+%# Hmmm, number of documents and terms are about the same.
+%# Total number of terms is completely different!
+

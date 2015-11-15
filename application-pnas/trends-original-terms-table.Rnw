@@ -1,0 +1,11 @@
+\SweaveOpts{keep.source = TRUE}
+\begin{table}
+\footnotesize
+<<echo=FALSE, results=tex>>=
+options(width=68)
+source("trends-original-terms-table.R")
+@
+\caption{Fig. 5 from \citetalias{Griffiths2004}: ``Twelve most probable terms [in the three
+coldest (top) and three hottest (bottom) topics from 1991 to 2001]''.}
+\label{tbl:trends-original-terms}
+\end{table}

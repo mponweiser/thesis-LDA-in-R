@@ -1,0 +1,11 @@
+<<echo=F>>=
+options(width=60)
+<<eval=F>>=
+library("topicmodels")
+load("abstracts-dtm.RData")
+system.time(model_lda <- LDA(dtm, 300, method= "Gibbs", control =
+list(iter = 2000, seed = 33)))
+#    user   system  elapsed 
+#49410.40     1.70 49420.66
+# 13,75h
+save(model_lda, file = "model-lda-gibbs-300topics.RData")
